@@ -65,6 +65,10 @@ struct _peer peers[MAX_PEERS];
 
 struct _opt g_opt;
 
+int statistics_count;
+
+double handshake_count_rate;
+
 #define ERREXIT(a...)	do { \
 	fprintf(stderr, "%s:%d ", __func__, __LINE__); \
 	fprintf(stderr, a); \
@@ -124,6 +128,8 @@ init_default(void)
 	g_opt.ip = -1; //inet_addr("127.0.0.1");
 	FD_ZERO(&g_opt.rfds);
 	FD_ZERO(&g_opt.wfds);
+  statistics_count = 0;
+  handshake_count_rate = 0;
 }
 
 static void
@@ -131,7 +137,7 @@ init_vars(void)
 {
 	SSL_library_init();
 	SSL_load_error_strings();
-	g_opt.ctx = SSL_CTX_new(SSLv23_method()); 
+	g_opt.ctx = SSL_CTX_new(TLSv1_2_client_method()); 
 
 #ifdef SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION
 	SSL_CTX_set_options(g_opt.ctx, SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION);
@@ -385,19 +391,22 @@ PEER_SSL_dummywrite(struct _peer *p)
 static void
 PEER_SSL_renegotiate(struct _peer *p)
 {
-	int ret;
-
-	ret = SSL_renegotiate(p->ssl);
-	if (ret != 1)
-	{
-		DEBUGF("SSL_renegotiate() failed\n");
-		g_opt.stat.error_count++;
-		PEER_disconnect(p);
-		return;
-	}
-
-	p->state = STATE_SSL_HANDSHAKING;
-	ssl_handshake_io(p);
+//	int ret;
+//
+//	ret = SSL_renegotiate(p->ssl);
+//	if (ret != 1)
+//	{
+//		DEBUGF("SSL_renegotiate() failed\n");
+//		g_opt.stat.error_count++;
+//		PEER_disconnect(p);
+//		return;
+//	}
+//
+//	p->state = STATE_SSL_HANDSHAKING;
+//	ssl_handshake_io(p);
+	g_opt.stat.total_renegotiations++;
+	p->count_renegotiations++;
+    PEER_disconnect(p);
 }
 
 static void
@@ -621,7 +630,7 @@ PEER_disconnect(struct _peer *p)
 static void
 statistics_update(struct timeval *tv)
 {
-	int32_t reneg_delta;
+	int64_t reneg_delta;
 	uint32_t usec_delta;
 	uint64_t usec_now;
 	int32_t conn = 0;
@@ -638,10 +647,22 @@ statistics_update(struct timeval *tv)
 		if (peers[i].state > STATE_TCP_CONNECTING)
 			conn++;
 	}
-	printf("Handshakes %" PRIu32" [%.2f h/s], %" PRId32 " Conn, %" PRIu32 " Err\n", g_opt.stat.total_renegotiations, (float)(1000000 * reneg_delta) / usec_delta, conn, g_opt.stat.error_count);
+//  if (((double)((1000000 * reneg_delta) / usec_delta))<0) {
+//    printf("reneg_delta: %"PRId32 ", usec_delta:" PRIu32 ",usec_now:"PRIu32 ",epoch_start_usec:"PRIu32",Handshakes [%.2f h/s]\n",reneg_delta, usec_delta,usec_now,g_opt.stat.epoch_start_usec,(double)((1000000 * reneg_delta) / usec_delta));
+//  	g_opt.stat.epoch_start_renegotiations = g_opt.stat.total_renegotiations;
+//	g_opt.stat.epoch_start_usec = usec_now;
+  
+//  }
+//  else{
+  statistics_count++;
+  handshake_count_rate += (double)((1000000 * reneg_delta) / usec_delta);
+	printf("Handshakes %" PRIu32" [%.2f h/s], %" PRId32 " Conn, %" PRIu32 " Err, avg Handshakes [%.2f h/s]\n", g_opt.stat.total_renegotiations, (double)((1000000 * reneg_delta) / usec_delta), conn, g_opt.stat.error_count, handshake_count_rate/statistics_count);
+//  printf( "Handshakes count: %" PRIu64",usec_delta: %"PRIu32"\n",reneg_delta, usec_delta);
+//  printf("[%.2f h/s]",(double)((1000000 * reneg_delta) / usec_delta));
 
 	g_opt.stat.epoch_start_renegotiations = g_opt.stat.total_renegotiations;
 	g_opt.stat.epoch_start_usec = usec_now;
+// }
 }
 
 int

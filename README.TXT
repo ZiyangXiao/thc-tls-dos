@@ -12,7 +12,7 @@ COMPILE
 
 # ./configure
 # make all
-# src/thc-ssl-down -h
+# src/thc-ssl-dos -h
 
 
 Yours sincerly,
